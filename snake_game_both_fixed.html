@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Snake Game — Fixed Logo + Music</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Roboto, 'Segoe UI', sans-serif;
+           display:flex; gap:20px; align-items:flex-start; padding:24px;
+           background:#0f172a; color:#e6eef8; }
+    .wrap { display:flex; gap:20px; }
+    canvas { background:#06102a; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.6); }
+    .panel { min-width:260px; padding:16px; border-radius:8px; background:rgba(255,255,255,0.03); }
+    h1 { margin:0 0 12px 0; font-size:18px; }
+    .info { line-height:1.6; }
+    button { padding:8px 12px; border-radius:6px; border:0; background:#2563eb; color:white; cursor:pointer; }
+    .small { font-size:13px; color:#cbd5e1; }
+    .center { display:flex; gap:8px; }
+    .status { margin-top:8px; font-size:13px; color:#93c5fd; }
+    input[type="range"] { width:120px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="600" height="600"></canvas>
+    <div class="panel">
+      <h1>Snake Game — Fixed Logo + Music</h1>
+      <div class="info">
+        <div><strong>Score:</strong> <span id="score">0</span></div>
+        <div><strong>Level:</strong> <span id="level">1</span>/10</div>
+        <div><strong>Speed:</strong> <span id="speed">200</span> ms</div>
+        <div><strong>Next level in:</strong> <span id="next">5</span> points</div>
+        <div><strong>Obstacles:</strong> <span id="obcount">0</span></div>
+        <div class="status"><strong>Logo image:</strong> <span id="imgStatus">embedded</span></div>
+      </div>
+      <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.1)" />
+      <div class="center">
+        <button id="btnStart">Start / Reset</button>
+        <button id="btnPause">Pause</button>
+        <button id="btnSound">Music: Off</button>
+        <label class="small" style="align-self:center;margin-left:6px">Vol</label>
+        <input id="vol" type="range" min="0" max="100" value="12" />
+      </div>
+      <p class="small" style="margin-top:12px">
+        Controls: Arrow keys or WASD. You level up every 5 points.  
+        Click Start or Music to enable sound (browser requires user gesture).
+      </p>
+    </div>
+  </div>
+
+<script>
+// ---------- Setup and assets ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const levelEl = document.getElementById('level');
+const speedEl = document.getElementById('speed');
+const nextEl = document.getElementById('next');
+const obcountEl = document.getElementById('obcount');
+const imgStatusEl = document.getElementById('imgStatus');
+const btnStart = document.getElementById('btnStart');
+const btnPause = document.getElementById('btnPause');
+const btnSound = document.getElementById('btnSound');
+const volSlider = document.getElementById('vol');
+
+const CELL = 20;
+const COLS = canvas.width / CELL;
+const ROWS = canvas.height / CELL;
+
+let snake, dir, nextDir, apple, obstacles, score, level, paused;
+let tickMs = 200;
+let lastTime = 0;
+
+// load embedded logo image (full base64)
+let appleImg = new Image();
+let appleImgLoaded = false;
+let appleImgBroken = false;
+appleImg.onload = () => { appleImgLoaded = true; appleImgBroken = false; imgStatusEl.textContent = 'loaded'; };
+appleImg.onerror = () => { appleImgLoaded = false; appleImgBroken = true; imgStatusEl.textContent = 'failed (using fallback)'; };
+appleImg.src = "data:image/png;base64,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";
+
+// ---------- Game logic (unchanged) ----------
+function resetGame(){
+  snake = [{x: Math.floor(COLS/2), y: Math.floor(ROWS/2)}];
+  dir = {x:1,y:0};
+  nextDir = {...dir};
+  apple = null;
+  obstacles = [];
+  score = 0;
+  level = 1;
+  paused = false;
+  tickMs = 200;
+  spawnApple();
+  generateObstaclesForLevel();
+  updateHUD();
+}
+function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function isCellOccupied(p){
+  for(const s of snake) if(s.x===p.x && s.y===p.y) return true;
+  for(const o of obstacles) if(o.x===p.x && o.y===p.y) return true;
+  return false;
+}
+function spawnApple(){
+  let tries = 0;
+  do{
+    const pos = {x: rand(0,COLS-1), y: rand(0,ROWS-1)};
+    if(!isCellOccupied(pos)){ apple = pos; return; }
+    tries++;
+  } while(tries < 500);
+  apple = {x: Math.floor(COLS/2), y: Math.floor(ROWS/2)};
+}
+function generateObstaclesForLevel(){
+  obstacles = [];
+  const count = Math.min(Math.floor((level-1)*1.5),40);
+  for(let i=0;i<count;i++){
+    let p;let tries=0;
+    do{p={x:rand(0,COLS-1),y:rand(0,ROWS-1)};tries++;} while(isCellOccupied(p)&&tries<200);
+    if(!isCellOccupied(p)) obstacles.push(p);
+  }
+}
+function updateHUD(){
+  scoreEl.textContent = score;
+  levelEl.textContent = level;
+  speedEl.textContent = tickMs;
+  nextEl.textContent = Math.max(0, level*5 - score);
+  obcountEl.textContent = obstacles.length;
+}
+function gameTick(){
+  dir = nextDir;
+  const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+  if(head.x < 0) head.x = COLS - 1;
+  if(head.x >= COLS) head.x = 0;
+  if(head.y < 0) head.y = ROWS - 1;
+  if(head.y >= ROWS) head.y = 0;
+
+  if(snake.some(s=>s.x===head.x&&s.y===head.y)||obstacles.some(o=>o.x===head.x&&o.y===head.y)){
+    alert(`Game Over! Score: ${score}, Level reached: ${level}`);
+    resetGame();
+    return;
+  }
+
+  snake.unshift(head);
+
+  if(apple && head.x===apple.x && head.y===apple.y){
+    score++;
+    if(score >= level*5 && level < 10){
+      level++;
+      tickMs = Math.max(50, 200 - (level-1)*15);
+      generateObstaclesForLevel();
+      setTimeout(()=>alert('Level up! You are now level ' + level), 10);
+    }
+    spawnApple();
+  } else snake.pop();
+
+  updateHUD();
+}
+function draw(){
+  ctx.fillStyle='#06102a';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle='rgba(255,255,255,0.03)';
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*CELL,0);ctx.lineTo(x*CELL,canvas.height);ctx.stroke();}
+  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*CELL);ctx.lineTo(canvas.width,y*CELL);ctx.stroke();}
+
+  for(const o of obstacles){ctx.fillStyle='#7f1d1d';ctx.fillRect(o.x*CELL+1,o.y*CELL+1,CELL-2,CELL-2);}
+
+  if(!apple) spawnApple();
+
+  if(appleImgLoaded && !appleImgBroken){
+    const pad = 2;
+    ctx.drawImage(appleImg, apple.x*CELL + pad, apple.y*CELL + pad, CELL - pad*2, CELL - pad*2);
+  } else drawCell(apple.x, apple.y, '#ef4444');
+
+  for(let i=snake.length-1;i>=0;i--){
+    const s=snake[i];
+    const c=i===0?'#10b981':'#059669';
+    drawCell(s.x,s.y,c);
+  }
+}
+function drawCell(x,y,color){ctx.fillStyle=color;ctx.fillRect(x*CELL+1,y*CELL+1,CELL-2,CELL-2);}
+function loop(time){
+  if(!lastTime) lastTime=time;
+  const elapsed=time-lastTime;
+  if(!paused && elapsed>=tickMs){ lastTime=time; gameTick(); }
+  draw();
+  requestAnimationFrame(loop);
+}
+window.addEventListener('keydown', e => {
+  const k = e.key;
+  if(['ArrowUp','w','W'].includes(k)) tryDir(0,-1);
+  if(['ArrowDown','s','S'].includes(k)) tryDir(0,1);
+  if(['ArrowLeft','a','A'].includes(k)) tryDir(-1,0);
+  if(['ArrowRight','d','D'].includes(k)) tryDir(1,0);
+  if(['p','P'].includes(k)) togglePause();
+});
+function tryDir(x,y){ if(x===-dir.x && y===-dir.y) return; nextDir={x,y}; }
+function togglePause(){ paused=!paused; btnPause.textContent=paused?'Resume':'Pause'; }
+btnStart.addEventListener('click', resetGame);
+btnPause.addEventListener('click', togglePause);
+
+// ---------- Robust WebAudio music (won't interfere with rendering) ----------
+let audioCtx = null;
+let masterGain = null;
+let musicTimer = null;
+let musicPlaying = false;
+let seqIndex = 0;
+const seq = [440, 523.25, 659.25, 880, 659.25, 523.25]; // simple arpeggio
+
+function initAudio(){
+  if(audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = volSlider.value / 100.0;
+  masterGain.connect(audioCtx.destination);
+}
+
+// play one note using short envelope
+function playNoteUnsafe(freq, dur){
+  if(!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.linearRampToValueAtTime(1.0, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  osc.connect(g);
+  g.connect(masterGain);
+  osc.start(now);
+  osc.stop(now + dur + 0.02);
+}
+
+function stepMusic(){
+  playNoteUnsafe(seq[seqIndex % seq.length], 0.25);
+  seqIndex++;
+}
+
+function startMusic(){
+  if(musicPlaying) return;
+  try {
+    initAudio();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    // small immediate step then periodic scheduling with setInterval (lightweight)
+    stepMusic();
+    musicTimer = setInterval(stepMusic, 300);
+    musicPlaying = true;
+    btnSound.textContent = 'Music: On';
+  } catch(e){
+    console.warn('Audio start failed', e);
+  }
+}
+
+function stopMusic(){
+  if(!musicPlaying) return;
+  clearInterval(musicTimer);
+  musicTimer = null;
+  musicPlaying = false;
+  btnSound.textContent = 'Music: Off';
+}
+
+function toggleMusic(){
+  if(!audioCtx) {
+    // init on gesture then start
+    initAudio();
+    startMusic();
+    return;
+  }
+  if(musicPlaying) stopMusic();
+  else startMusic();
+}
+
+// Keep volume slider in sync with masterGain
+volSlider.addEventListener('input', (e) => {
+  const v = e.target.value;
+  if(masterGain) masterGain.gain.setValueAtTime(v/100, audioCtx ? audioCtx.currentTime : 0);
+});
+
+// Ensure first user gesture (any click) will create/resume audio context so music can start reliably
+function ensureAudioOnGesture(){
+  if(audioCtx && audioCtx.state !== 'suspended') return;
+  try {
+    initAudio();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+  } catch(e){ /* ignore */ }
+  // remove the temporary listeners after first gesture
+  window.removeEventListener('click', ensureAudioOnGesture);
+  window.removeEventListener('keydown', ensureAudioOnGesture);
+}
+
+window.addEventListener('click', ensureAudioOnGesture, {capture:true, once:false});
+window.addEventListener('keydown', ensureAudioOnGesture, {capture:true, once:false});
+
+// wire music button
+btnSound.addEventListener('click', (e) => {
+  // click is a user gesture — safe to init/resume audio
+  toggleMusic();
+});
+
+// Also resume audio if Start is clicked (user gesture)
+btnStart.addEventListener('click', (e) => {
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  // do not auto-start music unless user toggles it — avoids unexpected audio
+  resetGame();
+});
+
+// keep image drawing/rendering light — audio uses WebAudio and won't block canvas draw loop
+resetGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
